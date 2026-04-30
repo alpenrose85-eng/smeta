@@ -109,10 +109,8 @@ DEFAULT_SERVICES = [
 STEEL_OPTIONS = ["Сталь 20", "12Х1МФ", "12Х18Н12Т"]
 STEEL_SERVICE_RULES = {
     "Сталь 20": [
-        ("mech_room", 1),
-        ("mech_hot", 1),
         ("chem_steel20", 1),
-        ("sample_micro", 2),
+        ("slif_prep", 1),
     ],
     "12Х1МФ": [
         ("chem_perlitic", 1),
@@ -124,8 +122,22 @@ STEEL_SERVICE_RULES = {
         ("slif_prep", 1),
     ],
 }
+STEEL20_MECH_RULES = [
+    ("mech_room", 1),
+    ("mech_hot", 1),
+    ("sample_micro", 6),
+]
 SYSTEM_CODES = {"resource_report", "damage_investigation"}
 RESULT_COLUMNS = ["Источник", "Услуга", "Цена", "Количество", "Единица", "Сумма"]
+
+
+def merge_with_default_services(services: list[dict]) -> list[dict]:
+    existing_codes = {service["code"] for service in services}
+    merged_services = [service.copy() for service in services]
+    for default_service in DEFAULT_SERVICES:
+        if default_service["code"] not in existing_codes:
+            merged_services.append(default_service.copy())
+    return merged_services
 
 
 @st.cache_data
@@ -133,7 +145,8 @@ def load_services() -> list[dict]:
     if not DATA_PATH.exists():
         return [service.copy() for service in DEFAULT_SERVICES]
     with DATA_PATH.open(encoding="utf-8") as file:
-        return json.load(file)
+        services = json.load(file)
+    return merge_with_default_services(services)
 
 
 def save_services(services: list[dict]) -> None:
@@ -183,7 +196,11 @@ def add_slif_measurement_row(rows: list[dict], service_by_code: dict[str, dict],
         )
 
 
-def calc_steel_rows(service_by_code: dict[str, dict], steel_counts: dict[str, int]) -> list[dict]:
+def calc_steel_rows(
+    service_by_code: dict[str, dict],
+    steel_counts: dict[str, int],
+    steel20_mech_count: int,
+) -> list[dict]:
     rows: list[dict] = []
     for steel_name, sample_count in steel_counts.items():
         if sample_count <= 0:
@@ -203,6 +220,20 @@ def calc_steel_rows(service_by_code: dict[str, dict], steel_counts: dict[str, in
             )
             if code == "slif_prep":
                 add_slif_measurement_row(rows, service_by_code, quantity, f"Авто: {steel_name}")
+
+    if steel20_mech_count > 0:
+        for code, multiplier in STEEL20_MECH_RULES:
+            service = service_by_code.get(code)
+            if not service:
+                continue
+            add_row(
+                rows,
+                source="Авто: Сталь 20 (механические испытания)",
+                service_name=service["name"],
+                price=service["price"],
+                quantity=steel20_mech_count * multiplier,
+                unit=service["unit"],
+            )
     return rows
 
 
@@ -437,7 +468,43 @@ def render_calculation_tab(services: list[dict]) -> None:
     st.caption("Заполните количество образцов напротив каждой марки стали.")
 
     steel_counts: dict[str, int] = {}
-    for steel_name in STEEL_OPTIONS:
+
+    steel20_count = st.number_input(
+        "Сталь 20",
+        min_value=0,
+        value=0,
+        step=1,
+        key="steel_Сталь 20",
+    )
+    steel_counts["Сталь 20"] = steel20_count
+
+    steel20_mech_enabled = st.checkbox(
+        "Механические испытания",
+        key="steel20_mech_enabled",
+    )
+    prev_enabled = st.session_state.get("steel20_mech_enabled_prev", False)
+    if steel20_mech_enabled:
+        if not prev_enabled or "steel20_mech_count_input" not in st.session_state:
+            st.session_state["steel20_mech_count_input"] = steel20_count
+        else:
+            st.session_state["steel20_mech_count_input"] = min(
+                st.session_state.get("steel20_mech_count_input", steel20_count),
+                steel20_count,
+            )
+    else:
+        st.session_state["steel20_mech_count_input"] = 0
+    st.session_state["steel20_mech_enabled_prev"] = steel20_mech_enabled
+
+    steel20_mech_count = st.number_input(
+        "Количество образцов для механических испытаний",
+        min_value=0,
+        max_value=steel20_count,
+        step=1,
+        key="steel20_mech_count_input",
+        disabled=not steel20_mech_enabled,
+    )
+
+    for steel_name in ["12Х1МФ", "12Х18Н12Т"]:
         steel_counts[steel_name] = st.number_input(
             steel_name,
             min_value=0,
@@ -446,7 +513,7 @@ def render_calculation_tab(services: list[dict]) -> None:
             key=f"steel_{steel_name}",
         )
 
-    rows.extend(calc_steel_rows(service_by_code, steel_counts))
+    rows.extend(calc_steel_rows(service_by_code, steel_counts, steel20_mech_count if steel20_mech_enabled else 0))
 
     st.divider()
     st.markdown("### Дополнительные услуги")
