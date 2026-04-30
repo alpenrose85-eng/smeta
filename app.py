@@ -64,6 +64,12 @@ DEFAULT_SERVICES = [
         "unit": "за образец",
     },
     {
+        "code": "slif_measurement",
+        "name": "Измерение фактических размеров",
+        "price": 1000,
+        "unit": "за шлиф",
+    },
+    {
         "code": "carbide_analysis",
         "name": "Карбидный анализ",
         "price": 20000,
@@ -164,6 +170,19 @@ def add_row(rows: list[dict], source: str, service_name: str, price: float, quan
     )
 
 
+def add_slif_measurement_row(rows: list[dict], service_by_code: dict[str, dict], quantity: float, source: str) -> None:
+    measurement_service = service_by_code.get("slif_measurement")
+    if measurement_service and quantity > 0:
+        add_row(
+            rows,
+            source=source,
+            service_name=measurement_service["name"],
+            price=measurement_service["price"],
+            quantity=quantity,
+            unit=measurement_service["unit"],
+        )
+
+
 def calc_steel_rows(service_by_code: dict[str, dict], steel_counts: dict[str, int]) -> list[dict]:
     rows: list[dict] = []
     for steel_name, sample_count in steel_counts.items():
@@ -173,14 +192,17 @@ def calc_steel_rows(service_by_code: dict[str, dict], steel_counts: dict[str, in
             service = service_by_code.get(code)
             if not service:
                 continue
+            quantity = sample_count * multiplier
             add_row(
                 rows,
                 source=f"Авто: {steel_name}",
                 service_name=service["name"],
                 price=service["price"],
-                quantity=sample_count * multiplier,
+                quantity=quantity,
                 unit=service["unit"],
             )
+            if code == "slif_prep":
+                add_slif_measurement_row(rows, service_by_code, quantity, f"Авто: {steel_name}")
     return rows
 
 
@@ -254,6 +276,8 @@ def calc_extra_rows(service_by_code: dict[str, dict], selected_codes: list[str])
                     quantity=quantity,
                     unit=service["unit"],
                 )
+                if code == "slif_prep":
+                    add_slif_measurement_row(rows, service_by_code, quantity, "Авто для шлифа")
     return rows
 
 
