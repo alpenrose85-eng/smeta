@@ -82,6 +82,12 @@ DEFAULT_SERVICES = [
         "unit": "за услугу",
     },
     {
+        "code": "long_strength_report",
+        "name": "Анализ и подготовка заключения о длительной прочности",
+        "price": 20000,
+        "unit": "за образец",
+    },
+    {
         "code": "resource_report",
         "name": "Подготовка заключения об оценке остаточного ресурса и расчет",
         "price": 50000,
@@ -194,6 +200,28 @@ def calc_extra_rows(service_by_code: dict[str, dict], selected_codes: list[str])
                 step=1,
                 key=f"{code}_hours",
             )
+            if sample_count > 0:
+                classic_service = service_by_code.get("sample_classic")
+                if classic_service:
+                    add_row(
+                        rows,
+                        source="Авто для длительной прочности",
+                        service_name=classic_service["name"],
+                        price=classic_service["price"],
+                        quantity=sample_count,
+                        unit=classic_service["unit"],
+                    )
+
+                report_service = service_by_code.get("long_strength_report")
+                if report_service:
+                    add_row(
+                        rows,
+                        source="Авто для длительной прочности",
+                        service_name=report_service["name"],
+                        price=report_service["price"],
+                        quantity=sample_count,
+                        unit=report_service["unit"],
+                    )
             if sample_count > 0 and hours > 0:
                 add_row(
                     rows,
